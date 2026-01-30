@@ -536,7 +536,7 @@
       var ver = j.openclawVersion ? (' | ' + j.openclawVersion) : '';
 
       if (els.statusText) {
-        els.statusText.textContent = (j.configured ? 'Molt is configured' : 'Not configured') + ver;
+        els.statusText.textContent = (j.configured ? 'OpenClaw is configured' : 'Not configured') + ver;
       }
 
       if (j.configured && els.configuredBanner) {
@@ -749,7 +749,7 @@
     httpJson('/setup/api/gateway-url').then(function (j) {
       var gatewayUrl = j.url;
 
-      // Update "Open Molt UI" button in success container
+      // Update "Open OpenClaw UI" button in success container
       var openUiBtn = $('a[href="/openclaw"]');
       if (openUiBtn) {
         openUiBtn.setAttribute('href', gatewayUrl);
@@ -852,7 +852,7 @@
       // If already configured, show banner
       if (state.isConfigured) {
         // User can still navigate through wizard but banner is shown
-        console.log('Molt is already configured');
+        console.log('OpenClaw is already configured');
       }
     });
 
