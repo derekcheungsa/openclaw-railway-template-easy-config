@@ -16,30 +16,42 @@ This repo packages **Openclaw** for Railway with a small **/setup** web wizard s
 - During setup, the wrapper runs `openclaw onboard --non-interactive ...` inside the container, writes state to the volume, and then starts the gateway.
 - After setup, **`/` is Openclaw**. The wrapper reverse-proxies all traffic (including WebSockets) to the local gateway process.
 
-## Railway deploy instructions (what you’ll publish as a Template)
+## Railway deploy instructions
 
-In Railway Template Composer:
+Create a new template in Railway with these steps:
 
-1. Create a new template from this GitHub repo.
-2. Add a **Volume** mounted at `/data`.
-3. Set the following variables:
+1. **Create a new template** from this GitHub repo
+2. **Add a Volume** mounted at `/data`
+3. **Set one environment variable**:
+   - `SETUP_PASSWORD` — Your password to access the setup wizard and authenticate with the gateway
+4. **Enable Public Networking** (HTTP) — Railway will assign a domain like `https://your-app.up.railway.app`
+5. **Deploy**
 
-Required:
+That's it! Just one variable to set.
 
-- `SETUP_PASSWORD` — password to access `/setup` and authenticate with the OpenClaw gateway
+## Getting started
 
-Notes:
+After deployment:
 
-- This template pins Openclaw to a known-good version by default via Docker build arg `OPENCLAW_VERSION`.
+1. Visit `https://<your-app>.up.railway.app/setup`
+2. Login with your `SETUP_PASSWORD`
+3. Select your AI provider and enter your API key
+4. Optionally configure messaging channels (Telegram, Discord, Slack)
+5. Click "Run Setup" and you're done!
 
-4. Enable **Public Networking** (HTTP). Railway will assign a domain.
-5. Deploy.
-
-Then:
-
-- Visit `https://<your-app>.up.railway.app/setup`
-- Complete setup
-- Visit `https://<your-app>.up.railway.app/` and `/openclaw`
+The setup wizard supports these AI providers:
+- **Anthropic** (Claude) - Recommended
+- **OpenAI** (GPT models)
+- **Google** (Gemini)
+- **OpenRouter**
+- **Atlas Cloud**
+- **Vercel AI Gateway**
+- **Moonshot AI**
+- **Z.AI (GLM 4.7)**
+- **MiniMax**
+- **Qwen**
+- **Synthetic**
+- **OpenCode Zen**
 
 ## Getting chat tokens (so you don’t have to scramble)
 
@@ -58,16 +70,19 @@ Then:
 4. Copy the **Bot Token** and paste it into `/setup`
 5. Invite the bot to your server (OAuth2 URL Generator → scopes: `bot`, `applications.commands`; then choose permissions)
 
-## Local smoke test
+## Local testing
 
 ```bash
+# Build the container
 docker build -t openclaw-railway-template .
 
+# Run locally (only need SETUP_PASSWORD!)
 docker run --rm -p 8080:8080 \
   -e PORT=8080 \
   -e SETUP_PASSWORD=test \
   -v $(pwd)/.tmpdata:/data \
   openclaw-railway-template
 
-# open http://localhost:8080/setup (password: test)
+# Open http://localhost:8080/setup
+# Password: test
 ```
