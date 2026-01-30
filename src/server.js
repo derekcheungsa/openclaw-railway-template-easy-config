@@ -421,6 +421,12 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
   });
 });
 
+app.get("/setup/api/gateway-url", requireSetupAuth, (_req, res) => {
+  // Returns the gateway URL with token for direct access
+  const gatewayUrl = `/openclaw?token=${encodeURIComponent(OPENCLAW_GATEWAY_TOKEN)}`;
+  res.json({ url: gatewayUrl });
+});
+
 function buildOnboardArgs(payload) {
   const args = [
     "onboard",

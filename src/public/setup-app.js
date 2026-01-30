@@ -627,6 +627,8 @@
         if (isSuccess) {
           showElement(els.successContainer);
           clearState();
+          // Update gateway links with token after successful setup
+          setupGatewayLinks();
         } else {
           showElement(els.errorContainer);
           if (els.errorLog) {
@@ -740,6 +742,31 @@
   }
 
   // ===================================
+  // Gateway URL with Token
+  // ===================================
+  function setupGatewayLinks() {
+    // Fetch gateway URL with token and update all gateway links
+    httpJson('/setup/api/gateway-url').then(function (j) {
+      var gatewayUrl = j.url;
+
+      // Update "Open Molt UI" button in success container
+      var openUiBtn = $('a[href="/openclaw"]');
+      if (openUiBtn) {
+        openUiBtn.setAttribute('href', gatewayUrl);
+      }
+
+      // Update "Open UI" link in configured banner
+      var bannerUiLink = $('#configured-banner a[href="/openclaw"]');
+      if (bannerUiLink) {
+        bannerUiLink.setAttribute('href', gatewayUrl);
+      }
+    }).catch(function (e) {
+      console.warn('Failed to fetch gateway URL:', e);
+      // Fallback to /openclaw without token if API fails
+    });
+  }
+
+  // ===================================
   // Keyboard Shortcuts
   // ===================================
   function setupKeyboardShortcuts() {
@@ -813,6 +840,9 @@
 
     // Setup download backup
     setupDownloadBackup();
+
+    // Setup gateway links with token
+    setupGatewayLinks();
 
     // Setup keyboard shortcuts
     setupKeyboardShortcuts();
