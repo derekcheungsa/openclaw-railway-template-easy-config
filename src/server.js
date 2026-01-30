@@ -709,6 +709,19 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         }
       }
 
+      // Configure Atlas Cloud if selected
+      if (payload.authChoice === "atlas-api-key") {
+        await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "env.ATLAS_API_BASE", "https://api.atlascloud.ai/v1/"]),
+        );
+        await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "env.ATLAS_API_MODEL", "zai-org/glm-4.7"]),
+        );
+        extra += "\n[atlas] configured Atlas Cloud with base URL and model\n";
+      }
+
       // Apply changes immediately.
       await restartGateway();
     }
