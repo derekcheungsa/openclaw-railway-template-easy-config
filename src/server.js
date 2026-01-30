@@ -319,6 +319,14 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
       ],
     },
     {
+      value: "atlas",
+      label: "Atlas Cloud",
+      hint: "API key",
+      options: [
+        { value: "atlas-api-key", label: "Atlas Cloud API key" },
+      ],
+    },
+    {
       value: "moonshot",
       label: "Moonshot AI",
       hint: "Kimi K2 + Kimi Code",
@@ -424,6 +432,7 @@ function buildOnboardArgs(payload) {
       apiKey: "--anthropic-api-key",
       "openrouter-api-key": "--openrouter-api-key",
       "ai-gateway-api-key": "--ai-gateway-api-key",
+      "atlas-api-key": "--atlas-api-key",
       "moonshot-api-key": "--moonshot-api-key",
       "kimi-code-api-key": "--kimi-code-api-key",
       "gemini-api-key": "--gemini-api-key",
