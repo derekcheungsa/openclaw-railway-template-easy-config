@@ -342,8 +342,16 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
       ],
       models: [
         {
+          id: "moonshotai/kimi-k2.5",
+          name: "Moonshot Kimi K2.5 (default)",
+          description: "Flagship model with advanced reasoning and long context",
+          contextWindow: 327680,
+          inputPrice: 0.55,
+          outputPrice: 2.00,
+        },
+        {
           id: "minimaxai/minimax-m2.1",
-          name: "MiniMax M2.1 (default)",
+          name: "MiniMax M2.1",
           description: "Lightweight 10B model, optimized for coding",
           contextWindow: 196600,
           inputPrice: 0.30,
@@ -803,7 +811,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
       console.log(`[atlas] Checking authChoice: "${payload.authChoice}"`);
       if (payload.authChoice === "atlas-api-key") {
-        const atlasModel = payload.atlasModel || "minimaxai/minimax-m2.1";
+        const atlasModel = payload.atlasModel || "moonshotai/kimi-k2.5";
         console.log(`[atlas] Configuring Atlas Cloud provider with model: ${atlasModel}`);
 
         // Set models.mode to merge (doesn't clobber existing providers)
@@ -818,6 +826,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           apiKey: "${OPENAI_API_KEY}",
           api: "openai-completions",
           models: [
+            { id: "moonshotai/kimi-k2.5", name: "Moonshot Kimi K2.5" },
             { id: "minimaxai/minimax-m2.1", name: "MiniMax M2.1" },
             { id: "deepseek-ai/deepseek-r1", name: "DeepSeek R1" },
             { id: "zai-org/glm-4.7", name: "Z.AI GLM-4.7" },
