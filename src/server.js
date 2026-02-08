@@ -737,9 +737,9 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         // Set the default model (verify)
         await runCmd(
           OPENCLAW_NODE,
-          clawArgs(["config", "set", "model", "minimaxai/minimax-m2.1"]),
+          clawArgs(["config", "set", "model", "moonshotai/kimi-k2.5"]),
         );
-        extra += "\n[atlas] configured Atlas Cloud with OpenAI-compatible endpoint (provider: openai, model: minimaxai/minimax-m2.1)\n";
+        extra += "\n[atlas] configured Atlas Cloud with OpenAI-compatible endpoint (provider: openai, model: moonshotai/kimi-k2.5)\n";
       }
 
       // Apply changes immediately.
