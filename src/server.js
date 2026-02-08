@@ -159,13 +159,28 @@ async function startGateway() {
     OPENCLAW_GATEWAY_TOKEN,
   ];
 
+  // Read the .env file to get the API key for the gateway process
+  let gatewayEnv = {
+    ...process.env,
+    OPENCLAW_STATE_DIR: STATE_DIR,
+    OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
+  };
+
+  try {
+    const envPath = path.join(STATE_DIR, ".env");
+    const envContent = fs.readFileSync(envPath, "utf8");
+    const match = envContent.match(/OPENAI_API_KEY=(.+)/);
+    if (match && match[1]) {
+      gatewayEnv.OPENAI_API_KEY = match[1].trim();
+      console.log(`[gateway] Found OPENAI_API_KEY in .env, passing to gateway process`);
+    }
+  } catch (err) {
+    console.warn(`[gateway] Could not read .env file: ${err.message}`);
+  }
+
   gatewayProc = childProcess.spawn(OPENCLAW_NODE, clawArgs(args), {
     stdio: "inherit",
-    env: {
-      ...process.env,
-      OPENCLAW_STATE_DIR: STATE_DIR,
-      OPENCLAW_WORKSPACE_DIR: WORKSPACE_DIR,
-    },
+    env: gatewayEnv,
   });
 
   console.log(`[gateway] starting with command: ${OPENCLAW_NODE} ${clawArgs(args).join(" ")}`);
@@ -780,12 +795,26 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         const atlasModel = payload.atlasModel || "minimaxai/minimax-m2.1";
         console.log(`[atlas] Configuring Atlas Cloud provider with model: ${atlasModel}`);
 
-        // Configure Atlas Cloud as a custom OpenAI-compatible provider
+        // Set models.mode to merge (doesn't clobber existing providers)
+        await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "models.mode", "merge"]),
+        );
+
+        // Configure Atlas Cloud as a custom OpenAI-compatible provider with all available models
         const providerConfig = {
           baseUrl: "https://api.atlascloud.ai/v1/",
           apiKey: "${OPENAI_API_KEY}",
           api: "openai-completions",
-          models: [{ id: atlasModel, name: atlasModel }]
+          models: [
+            { id: "minimaxai/minimax-m2.1", name: "MiniMax M2.1" },
+            { id: "deepseek-ai/deepseek-r1", name: "DeepSeek R1" },
+            { id: "zai-org/glm-4.7", name: "Z.AI GLM-4.7" },
+            { id: "kwai-kat/kat-coder-pro", name: "KwaiKAT Coder Pro" },
+            { id: "moonshot-ai/moonshot-v1-128k", name: "Moonshot V1 128K" },
+            { id: "zhipu-ai/glm-4-5b-plus", name: "Zhipu GLM-4 5B Plus" },
+            { id: "qwen/qwen-2.5-coder-32b-instruct", name: "Qwen 2.5 Coder 32B" },
+          ]
         };
 
         console.log(`[atlas] Provider config:`, JSON.stringify(providerConfig));
@@ -796,10 +825,10 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         );
         console.log(`[atlas] Set provider result: exit=${setProviderResult.code}`, setProviderResult.output || "(no output)");
 
-        // Set the active model to use Atlas Cloud (use agents.defaults.model.primary)
+        // Set the active model to use Atlas Cloud (use / not :)
         const setModelResult = await runCmd(
           OPENCLAW_NODE,
-          clawArgs(["config", "set", "agents.defaults.model.primary", `atlas:${atlasModel}`]),
+          clawArgs(["config", "set", "agents.defaults.model.primary", `atlas/${atlasModel}`]),
         );
         console.log(`[atlas] Set model result: exit=${setModelResult.code}`, setModelResult.output || "(no output)");
 
