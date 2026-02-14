@@ -52,6 +52,9 @@ function clawArgs(args) {
 // Agent metadata file (dashboard-specific fields not stored in openclaw.json)
 const AGENT_META_PATH = path.join(STATE_DIR, "agent-meta.json");
 
+// Skills directory (each skill is a folder with SKILL.md + optional scripts/references/assets)
+const SKILLS_DIR = path.join(WORKSPACE_DIR, "skills");
+
 function readAgentMeta() {
   try {
     return JSON.parse(fs.readFileSync(AGENT_META_PATH, "utf8"));
@@ -63,6 +66,21 @@ function readAgentMeta() {
 function writeAgentMeta(meta) {
   fs.mkdirSync(STATE_DIR, { recursive: true });
   fs.writeFileSync(AGENT_META_PATH, JSON.stringify(meta, null, 2), "utf8");
+}
+
+function parseSkillFrontmatter(content) {
+  const match = content.match(/^---\n([\s\S]*?)\n---/);
+  if (!match) return {};
+  const meta = {};
+  for (const line of match[1].split("\n")) {
+    const idx = line.indexOf(":");
+    if (idx > 0) {
+      const key = line.slice(0, idx).trim();
+      const val = line.slice(idx + 1).trim();
+      meta[key] = val;
+    }
+  }
+  return meta;
 }
 
 // Persona templates for quick agent personality configuration
@@ -1698,6 +1716,189 @@ app.post("/setup/api/personas/apply", requireSetupAuth, async (req, res) => {
     return res.json({ ok: true, data: { applied: templateId } });
   } catch (err) {
     console.error("[/setup/api/personas/apply] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// ---------------------------------------------------------------------------
+// Skills Management REST APIs (for OpenClaw Cloud Dashboard)
+// ---------------------------------------------------------------------------
+
+const SKILL_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+// GET /setup/api/skills - List installed skills
+app.get("/setup/api/skills", requireSetupAuth, (_req, res) => {
+  try {
+    if (!fs.existsSync(SKILLS_DIR)) {
+      return res.json({ ok: true, data: { skills: [] } });
+    }
+
+    const entries = fs.readdirSync(SKILLS_DIR, { withFileTypes: true });
+    const skills = [];
+
+    for (const entry of entries) {
+      if (!entry.isDirectory()) continue;
+      const skillMdPath = path.join(SKILLS_DIR, entry.name, "SKILL.md");
+      if (!fs.existsSync(skillMdPath)) continue;
+
+      const content = fs.readFileSync(skillMdPath, "utf8");
+      const meta = parseSkillFrontmatter(content);
+      const hasScripts = fs.existsSync(path.join(SKILLS_DIR, entry.name, "scripts"));
+
+      skills.push({
+        id: entry.name,
+        name: meta.name || entry.name,
+        description: meta.description || "",
+        hasScripts,
+      });
+    }
+
+    return res.json({ ok: true, data: { skills } });
+  } catch (err) {
+    console.error("[/setup/api/skills GET] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// POST /setup/api/skills/upload - Upload & install skill archive (.tar.gz)
+app.post(
+  "/setup/api/skills/upload",
+  requireSetupAuth,
+  express.raw({ type: "application/gzip", limit: "10mb" }),
+  async (req, res) => {
+    let tmpDir = null;
+    try {
+      if (!req.body || !req.body.length) {
+        return res.status(400).json({ ok: false, error: "Empty body. Send a .tar.gz archive." });
+      }
+
+      // Extract to temp directory first
+      tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "skill-upload-"));
+      const archivePath = path.join(tmpDir, "upload.tar.gz");
+      fs.writeFileSync(archivePath, req.body);
+
+      await tar.x({ file: archivePath, cwd: tmpDir });
+
+      // Find the top-level directory (ignore the archive file itself)
+      const extracted = fs.readdirSync(tmpDir).filter((f) => f !== "upload.tar.gz");
+
+      if (extracted.length !== 1) {
+        return res.status(400).json({
+          ok: false,
+          error: `Archive must contain exactly one top-level directory. Found: ${extracted.join(", ") || "(empty)"}`,
+        });
+      }
+
+      const skillDirName = extracted[0];
+      const extractedPath = path.join(tmpDir, skillDirName);
+
+      if (!fs.statSync(extractedPath).isDirectory()) {
+        return res.status(400).json({ ok: false, error: "Top-level entry is not a directory." });
+      }
+
+      // Validate directory name
+      if (!SKILL_ID_RE.test(skillDirName)) {
+        return res.status(400).json({
+          ok: false,
+          error: `Invalid skill directory name "${skillDirName}". Use alphanumeric, hyphens, and underscores only.`,
+        });
+      }
+
+      // Validate SKILL.md exists
+      if (!fs.existsSync(path.join(extractedPath, "SKILL.md"))) {
+        return res.status(400).json({
+          ok: false,
+          error: "Skill directory must contain a SKILL.md file.",
+        });
+      }
+
+      // Install: move to SKILLS_DIR (overwrite if exists)
+      fs.mkdirSync(SKILLS_DIR, { recursive: true });
+      const destPath = path.join(SKILLS_DIR, skillDirName);
+      fs.rmSync(destPath, { recursive: true, force: true });
+      fs.cpSync(extractedPath, destPath, { recursive: true });
+
+      return res.json({ ok: true, data: { installed: skillDirName } });
+    } catch (err) {
+      console.error("[/setup/api/skills/upload] error:", err);
+      return res.status(500).json({ ok: false, error: String(err) });
+    } finally {
+      if (tmpDir) {
+        try {
+          fs.rmSync(tmpDir, { recursive: true, force: true });
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+    }
+  },
+);
+
+// GET /setup/api/skills/:id - Get skill details
+app.get("/setup/api/skills/:id", requireSetupAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!SKILL_ID_RE.test(id)) {
+      return res.status(400).json({ ok: false, error: "Invalid skill ID." });
+    }
+
+    const skillDir = path.join(SKILLS_DIR, id);
+    const skillMdPath = path.join(skillDir, "SKILL.md");
+
+    if (!fs.existsSync(skillMdPath)) {
+      return res.status(404).json({ ok: false, error: `Skill "${id}" not found.` });
+    }
+
+    const content = fs.readFileSync(skillMdPath, "utf8");
+    const meta = parseSkillFrontmatter(content);
+
+    // List all files in the skill directory recursively
+    const files = [];
+    function walk(dir, prefix) {
+      for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+        const rel = prefix ? `${prefix}/${entry.name}` : entry.name;
+        if (entry.isDirectory()) {
+          walk(path.join(dir, entry.name), rel);
+        } else {
+          files.push(rel);
+        }
+      }
+    }
+    walk(skillDir, "");
+
+    return res.json({
+      ok: true,
+      data: {
+        id,
+        name: meta.name || id,
+        description: meta.description || "",
+        content,
+        files,
+      },
+    });
+  } catch (err) {
+    console.error("[/setup/api/skills/:id GET] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// DELETE /setup/api/skills/:id - Remove installed skill
+app.delete("/setup/api/skills/:id", requireSetupAuth, (req, res) => {
+  try {
+    const { id } = req.params;
+    if (!SKILL_ID_RE.test(id)) {
+      return res.status(400).json({ ok: false, error: "Invalid skill ID." });
+    }
+
+    const skillDir = path.join(SKILLS_DIR, id);
+    if (!fs.existsSync(skillDir)) {
+      return res.status(404).json({ ok: false, error: `Skill "${id}" not found.` });
+    }
+
+    fs.rmSync(skillDir, { recursive: true, force: true });
+    return res.json({ ok: true, data: { removed: id } });
+  } catch (err) {
+    console.error("[/setup/api/skills/:id DELETE] error:", err);
     return res.status(500).json({ ok: false, error: String(err) });
   }
 });
