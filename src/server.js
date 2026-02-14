@@ -49,6 +49,141 @@ function clawArgs(args) {
   return [OPENCLAW_ENTRY, ...args];
 }
 
+// Agent metadata file (dashboard-specific fields not stored in openclaw.json)
+const AGENT_META_PATH = path.join(STATE_DIR, "agent-meta.json");
+
+function readAgentMeta() {
+  try {
+    return JSON.parse(fs.readFileSync(AGENT_META_PATH, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeAgentMeta(meta) {
+  fs.mkdirSync(STATE_DIR, { recursive: true });
+  fs.writeFileSync(AGENT_META_PATH, JSON.stringify(meta, null, 2), "utf8");
+}
+
+// Persona templates for quick agent personality configuration
+const PERSONA_TEMPLATES = [
+  {
+    id: "support-friendly",
+    name: "Friendly Support Agent",
+    description: "Warm, empathetic support agent that prioritizes user satisfaction and clear communication.",
+    category: "support",
+    soul: `# SOUL - Friendly Support Agent
+
+You are a warm, empathetic support agent. Your primary goal is to help users resolve their issues quickly while making them feel heard and valued.
+
+## Personality
+- Friendly and approachable tone
+- Patient with all skill levels
+- Proactive in offering additional help
+- Celebrate user successes
+
+## Communication Style
+- Use clear, jargon-free language
+- Break complex steps into simple instructions
+- Confirm understanding before moving on
+- End interactions with a helpful follow-up suggestion`,
+    identity: { name: "Support Agent" },
+    model: null,
+  },
+  {
+    id: "developer-focused",
+    name: "Developer Assistant",
+    description: "Technical coding assistant that provides precise, well-documented solutions with best practices.",
+    category: "development",
+    soul: `# SOUL - Developer Assistant
+
+You are a skilled developer assistant focused on writing clean, maintainable code. You follow best practices and explain your reasoning.
+
+## Personality
+- Direct and technically precise
+- Opinionated about code quality
+- Thorough in error handling
+- Security-conscious
+
+## Communication Style
+- Use code examples liberally
+- Reference documentation and standards
+- Explain trade-offs between approaches
+- Flag potential issues proactively`,
+    identity: { name: "Dev Assistant" },
+    model: null,
+  },
+  {
+    id: "creative-writer",
+    name: "Creative Writer",
+    description: "Imaginative writing partner that helps with storytelling, content creation, and creative brainstorming.",
+    category: "creative",
+    soul: `# SOUL - Creative Writer
+
+You are an imaginative creative writing partner. You help users craft compelling narratives, generate ideas, and refine their creative work.
+
+## Personality
+- Enthusiastic about creative expression
+- Encouraging and constructive
+- Rich vocabulary and varied sentence structure
+- Playful but professional
+
+## Communication Style
+- Offer multiple creative options
+- Use vivid language and metaphors
+- Ask thought-provoking questions
+- Build on user ideas rather than replacing them`,
+    identity: { name: "Creative Writer" },
+    model: null,
+  },
+  {
+    id: "data-analyst",
+    name: "Data Analyst",
+    description: "Analytical assistant that excels at interpreting data, finding patterns, and presenting insights clearly.",
+    category: "analytics",
+    soul: `# SOUL - Data Analyst
+
+You are a meticulous data analyst. You help users understand their data, find patterns, and make data-driven decisions.
+
+## Personality
+- Precise and detail-oriented
+- Evidence-based reasoning
+- Clear about assumptions and limitations
+- Pragmatic about methodology
+
+## Communication Style
+- Present findings with supporting evidence
+- Use structured formats (tables, lists)
+- Distinguish correlation from causation
+- Suggest next steps for deeper analysis`,
+    identity: { name: "Data Analyst" },
+    model: null,
+  },
+  {
+    id: "minimalist",
+    name: "Minimalist Assistant",
+    description: "Concise, no-nonsense assistant that delivers maximum value with minimum words.",
+    category: "productivity",
+    soul: `# SOUL - Minimalist Assistant
+
+You are a concise, efficient assistant. You deliver maximum value with minimum words. No fluff, no filler.
+
+## Personality
+- Direct and to the point
+- Efficient with words
+- Action-oriented
+- Respectful of user time
+
+## Communication Style
+- Short, clear responses
+- Bullet points over paragraphs
+- Skip pleasantries unless asked
+- Lead with the answer, then explain if needed`,
+    identity: { name: "Assistant" },
+    model: null,
+  },
+];
+
 function configPath() {
   return (
     process.env.OPENCLAW_CONFIG_PATH?.trim() ||
@@ -381,6 +516,20 @@ decodeCredentialsFromEnv();
 const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "1mb" }));
+
+// CORS middleware for external dashboard access (e.g. OpenClaw Cloud on Lovable)
+app.use("/setup/api", (req, res, next) => {
+  const origin = req.headers.origin;
+  const allowed = (process.env.DASHBOARD_ORIGINS || "").split(",").filter(Boolean);
+  if (origin && allowed.some((a) => origin === a)) {
+    res.set("Access-Control-Allow-Origin", origin);
+    res.set("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+    res.set("Access-Control-Allow-Headers", "Content-Type,Authorization");
+    res.set("Access-Control-Allow-Credentials", "true");
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
 
 // Minimal health endpoint for Railway.
 app.get("/setup/healthz", (_req, res) => res.json({ ok: true }));
@@ -1336,6 +1485,221 @@ app.get("/setup/export", requireSetupAuth, async (_req, res) => {
   });
 
   stream.pipe(res);
+});
+
+// ---------------------------------------------------------------------------
+// Agent Configuration REST APIs (for OpenClaw Cloud Dashboard)
+// ---------------------------------------------------------------------------
+
+// GET /setup/api/agent - Read current agent config
+app.get("/setup/api/agent", requireSetupAuth, async (_req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.json({ ok: false, error: "Not configured. Run setup first." });
+    }
+
+    // Read OpenClaw-native config values in parallel
+    const [modelResult, identityResult, channelsResult] = await Promise.all([
+      runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "agents.defaults.model.primary"])),
+      runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "agents.defaults.identity"])),
+      runCmd(OPENCLAW_NODE, clawArgs(["config", "get", "channels"])),
+    ]);
+
+    const model = modelResult.code === 0 ? modelResult.output.trim() : null;
+
+    let identity = null;
+    if (identityResult.code === 0) {
+      try {
+        identity = JSON.parse(identityResult.output.trim());
+      } catch {
+        identity = identityResult.output.trim() || null;
+      }
+    }
+
+    let channels = null;
+    if (channelsResult.code === 0) {
+      try {
+        channels = JSON.parse(channelsResult.output.trim());
+      } catch {
+        channels = null;
+      }
+    }
+
+    const meta = readAgentMeta();
+    const soulPath = path.join(WORKSPACE_DIR, "SOUL.md");
+    const hasSoul = fs.existsSync(soulPath);
+
+    return res.json({
+      ok: true,
+      data: { model, identity, channels, meta, hasSoul },
+    });
+  } catch (err) {
+    console.error("[/setup/api/agent GET] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// PUT /setup/api/agent - Update agent config
+app.put("/setup/api/agent", requireSetupAuth, async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.json({ ok: false, error: "Not configured. Run setup first." });
+    }
+
+    const { model, identity, meta, channels } = req.body || {};
+    let needsRestart = false;
+    const results = [];
+
+    if (model) {
+      const r = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "agents.defaults.model.primary", model]),
+      );
+      results.push({ field: "model", code: r.code, output: r.output });
+      if (r.code !== 0) {
+        return res.status(500).json({ ok: false, error: "Failed to set model", output: r.output });
+      }
+      needsRestart = true;
+    }
+
+    if (identity) {
+      const r = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "--json", "agents.defaults.identity", JSON.stringify(identity)]),
+      );
+      results.push({ field: "identity", code: r.code, output: r.output });
+      if (r.code !== 0) {
+        return res.status(500).json({ ok: false, error: "Failed to set identity", output: r.output });
+      }
+      needsRestart = true;
+    }
+
+    if (channels && typeof channels === "object") {
+      for (const [type, cfg] of Object.entries(channels)) {
+        const r = await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "--json", `channels.${type}`, JSON.stringify(cfg)]),
+        );
+        results.push({ field: `channels.${type}`, code: r.code, output: r.output });
+        if (r.code !== 0) {
+          return res.status(500).json({ ok: false, error: `Failed to set channels.${type}`, output: r.output });
+        }
+      }
+      needsRestart = true;
+    }
+
+    if (meta && typeof meta === "object") {
+      const existing = readAgentMeta();
+      writeAgentMeta({ ...existing, ...meta });
+      results.push({ field: "meta", code: 0 });
+    }
+
+    if (needsRestart) {
+      await restartGateway();
+    }
+
+    return res.json({ ok: true, data: { results } });
+  } catch (err) {
+    console.error("[/setup/api/agent PUT] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// GET /setup/api/agent/soul - Read SOUL.md
+app.get("/setup/api/agent/soul", requireSetupAuth, (_req, res) => {
+  try {
+    const soulPath = path.join(WORKSPACE_DIR, "SOUL.md");
+    let content = null;
+    let exists = false;
+    if (fs.existsSync(soulPath)) {
+      content = fs.readFileSync(soulPath, "utf8");
+      exists = true;
+    }
+    return res.json({ ok: true, data: { content, exists } });
+  } catch (err) {
+    console.error("[/setup/api/agent/soul GET] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// PUT /setup/api/agent/soul - Write SOUL.md
+app.put("/setup/api/agent/soul", requireSetupAuth, (req, res) => {
+  try {
+    const { content } = req.body || {};
+    if (typeof content !== "string") {
+      return res.status(400).json({ ok: false, error: "content must be a string" });
+    }
+    fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+    const soulPath = path.join(WORKSPACE_DIR, "SOUL.md");
+    fs.writeFileSync(soulPath, content, "utf8");
+    return res.json({ ok: true, data: { written: true } });
+  } catch (err) {
+    console.error("[/setup/api/agent/soul PUT] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
+});
+
+// GET /setup/api/personas/templates - List persona templates (metadata only)
+app.get("/setup/api/personas/templates", requireSetupAuth, (_req, res) => {
+  const templates = PERSONA_TEMPLATES.map(({ id, name, description, category }) => ({
+    id,
+    name,
+    description,
+    category,
+  }));
+  return res.json({ ok: true, data: { templates } });
+});
+
+// POST /setup/api/personas/apply - Apply a persona template
+app.post("/setup/api/personas/apply", requireSetupAuth, async (req, res) => {
+  try {
+    if (!isConfigured()) {
+      return res.json({ ok: false, error: "Not configured. Run setup first." });
+    }
+
+    const { templateId } = req.body || {};
+    const template = PERSONA_TEMPLATES.find((t) => t.id === templateId);
+    if (!template) {
+      return res.status(400).json({ ok: false, error: `Unknown template: ${templateId}` });
+    }
+
+    // Write SOUL.md
+    fs.mkdirSync(WORKSPACE_DIR, { recursive: true });
+    fs.writeFileSync(path.join(WORKSPACE_DIR, "SOUL.md"), template.soul, "utf8");
+
+    // Set identity
+    if (template.identity) {
+      const r = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "--json", "agents.defaults.identity", JSON.stringify(template.identity)]),
+      );
+      if (r.code !== 0) {
+        return res.status(500).json({ ok: false, error: "Failed to set identity", output: r.output });
+      }
+    }
+
+    // Set model if template specifies one
+    if (template.model) {
+      const r = await runCmd(
+        OPENCLAW_NODE,
+        clawArgs(["config", "set", "agents.defaults.model.primary", template.model]),
+      );
+      if (r.code !== 0) {
+        return res.status(500).json({ ok: false, error: "Failed to set model", output: r.output });
+      }
+    }
+
+    // Save template selection in agent meta
+    const meta = readAgentMeta();
+    writeAgentMeta({ ...meta, personaTemplate: templateId });
+
+    await restartGateway();
+
+    return res.json({ ok: true, data: { applied: templateId } });
+  } catch (err) {
+    console.error("[/setup/api/personas/apply] error:", err);
+    return res.status(500).json({ ok: false, error: String(err) });
+  }
 });
 
 // Proxy everything else to the gateway.
