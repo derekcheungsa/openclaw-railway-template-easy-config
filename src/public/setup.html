@@ -226,6 +226,33 @@
           </div>
         </div>
 
+        <!-- OpenRouter Model Selection (shown only when OpenRouter is selected) -->
+        <div id="openrouter-model-group" hidden>
+          <label for="openrouterModel">
+            OpenRouter Model
+            <span class="badge">OpenRouter</span>
+          </label>
+          <input id="openrouterModel" list="openrouterModelList" type="text" placeholder="e.g. anthropic/claude-sonnet-4.6:online" autocomplete="off" />
+          <datalist id="openrouterModelList"></datalist>
+          <span class="hint-text">Pick a model or type any OpenRouter model ID. Add <code>:online</code> for web search.</span>
+          <div id="openrouter-model-info" class="info-box" style="margin-top: 0.75rem;" hidden>
+            <div style="display: flex; justify-content: space-between; align-items: start; gap: 1rem;">
+              <div style="flex: 1;">
+                <strong id="openrouter-model-name">Model Name</strong>
+                <p id="openrouter-model-desc" class="muted" style="margin: 0.25rem 0 0.5rem 0;">Model description</p>
+              </div>
+              <div style="text-align: right; white-space: nowrap;">
+                <div class="muted" style="font-size: 0.875rem;">
+                  <span id="openrouter-model-context">0K</span> context
+                </div>
+                <div class="muted" style="font-size: 0.875rem;">
+                  $<span id="openrouter-model-input">0.00</span>/M in · $<span id="openrouter-model-output">0.00</span>/M out
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- ModelScope Model Selection (shown only when ModelScope is selected) -->
         <div id="modelscope-model-group" hidden>
           <label for="modelscopeModel">
@@ -367,6 +394,10 @@
           <div class="review-item">
             <span class="review-label">Auth Method:</span>
             <span class="review-value" id="review-authChoice">-</span>
+          </div>
+          <div class="review-item" id="review-openrouter-model-row" hidden>
+            <span class="review-label">OpenRouter Model:</span>
+            <span class="review-value" id="review-openrouterModel">-</span>
           </div>
           <div class="review-item" id="review-atlas-model-row" hidden>
             <span class="review-label">Atlas Cloud Model:</span>

@@ -12,6 +12,7 @@
     isConfigured: false,
     authGroups: [],
     atlasModels: [],
+    openrouterModels: [],
     pairingRefreshTimer: null,
     modelscopeModels: [],
     formData: {
@@ -20,6 +21,7 @@
       authSecret: '',
       flow: 'quickstart',
       atlasModel: 'deepseek-ai/deepseek-v3.2',
+      openrouterModel: 'anthropic/claude-sonnet-4',
       modelscopeModel: 'deepseek-ai/DeepSeek-V3.2',
       telegramToken: '',
       discordToken: '',
@@ -47,6 +49,14 @@
     atlasModelContext: null,
     atlasModelInput: null,
     atlasModelOutput: null,
+    openrouterModelGroup: null,
+    openrouterModel: null,
+    openrouterModelInfo: null,
+    openrouterModelName: null,
+    openrouterModelDesc: null,
+    openrouterModelContext: null,
+    openrouterModelInput: null,
+    openrouterModelOutput: null,
     modelscopeModelGroup: null,
     modelscopeModel: null,
     modelscopeModelInfo: null,
@@ -157,6 +167,14 @@
     els.atlasModelContext = $('#atlas-model-context');
     els.atlasModelInput = $('#atlas-model-input');
     els.atlasModelOutput = $('#atlas-model-output');
+    els.openrouterModelGroup = $('#openrouter-model-group');
+    els.openrouterModel = $('#openrouterModel');
+    els.openrouterModelInfo = $('#openrouter-model-info');
+    els.openrouterModelName = $('#openrouter-model-name');
+    els.openrouterModelDesc = $('#openrouter-model-desc');
+    els.openrouterModelContext = $('#openrouter-model-context');
+    els.openrouterModelInput = $('#openrouter-model-input');
+    els.openrouterModelOutput = $('#openrouter-model-output');
     els.modelscopeModelGroup = $('#modelscope-model-group');
     els.modelscopeModel = $('#modelscopeModel');
     els.modelscopeModelInfo = $('#modelscope-model-info');
@@ -296,6 +314,7 @@
     state.formData.authSecret = els.authSecret ? els.authSecret.value : '';
     state.formData.flow = els.flow ? els.flow.value : 'quickstart';
     state.formData.atlasModel = els.atlasModel ? els.atlasModel.value : 'deepseek-ai/deepseek-v3.2';
+    state.formData.openrouterModel = els.openrouterModel ? els.openrouterModel.value : 'anthropic/claude-sonnet-4';
     state.formData.modelscopeModel = els.modelscopeModel ? els.modelscopeModel.value : 'deepseek-ai/DeepSeek-V3.2';
     state.formData.telegramToken = els.telegramToken ? els.telegramToken.value : '';
     state.formData.discordToken = els.discordToken ? els.discordToken.value : '';
@@ -320,6 +339,9 @@
     }
     if (els.atlasModel && state.formData.atlasModel) {
       els.atlasModel.value = state.formData.atlasModel;
+    }
+    if (els.openrouterModel && state.formData.openrouterModel) {
+      els.openrouterModel.value = state.formData.openrouterModel;
     }
     if (els.modelscopeModel && state.formData.modelscopeModel) {
       els.modelscopeModel.value = state.formData.modelscopeModel;
@@ -412,6 +434,29 @@
     setText($('#review-authChoice'), authChoiceLabel || '-');
     setText($('#review-authSecret'), maskToken(state.formData.authSecret));
     setText($('#review-flow'), flowLabel || '-');
+
+    // Show OpenRouter model in review if selected
+    var openrouterModelRow = $('#review-openrouter-model-row');
+    var openrouterModelEl = $('#review-openrouterModel');
+    if (openrouterModelRow && openrouterModelEl) {
+      if (state.formData.authChoice === 'openrouter-api-key' && state.formData.openrouterModel) {
+        showElement(openrouterModelRow);
+        var orVal = state.formData.openrouterModel;
+        var orBaseId = orVal.replace(/:[\w-]+$/, '');
+        var orDisplayName = orVal;
+        for (var ori = 0; ori < state.openrouterModels.length; ori++) {
+          if (state.openrouterModels[ori].id === orVal || state.openrouterModels[ori].id === orBaseId) {
+            var orSuffix = orVal !== state.openrouterModels[ori].id ? orVal.slice(state.openrouterModels[ori].id.length) : '';
+            orDisplayName = state.openrouterModels[ori].name + (orSuffix ? ' ' + orSuffix : '');
+            break;
+          }
+        }
+        setText(openrouterModelEl, orDisplayName);
+        openrouterModelEl.style.color = 'var(--success)';
+      } else {
+        hideElement(openrouterModelRow);
+      }
+    }
 
     // Show Atlas Cloud model in review if selected
     var atlasModelRow = $('#review-atlas-model-row');
@@ -553,6 +598,21 @@
       els.authChoice.appendChild(opt2);
     }
 
+    // Show/hide OpenRouter model dropdown
+    if (els.openrouterModelGroup) {
+      if (selectedGroup && selectedGroup.value === 'openrouter' && selectedGroup.models) {
+        state.openrouterModels = selectedGroup.models;
+        populateOpenrouterModels(selectedGroup.models);
+        showElement(els.openrouterModelGroup);
+        if (state.formData.openrouterModel) {
+          els.openrouterModel.value = state.formData.openrouterModel;
+          updateOpenrouterModelInfo();
+        }
+      } else {
+        hideElement(els.openrouterModelGroup);
+      }
+    }
+
     // Show/hide Atlas Cloud model dropdown
     if (els.atlasModelGroup) {
       if (selectedGroup && selectedGroup.value === 'atlas' && selectedGroup.models) {
@@ -582,6 +642,70 @@
       } else {
         hideElement(els.modelscopeModelGroup);
       }
+    }
+  }
+
+  // ===================================
+  // OpenRouter Model Selection
+  // ===================================
+  function populateOpenrouterModels(models) {
+    if (!els.openrouterModel) return;
+
+    var datalist = document.getElementById('openrouterModelList');
+    if (datalist) {
+      datalist.innerHTML = '';
+      for (var i = 0; i < models.length; i++) {
+        var m = models[i];
+        var opt = document.createElement('option');
+        opt.value = m.id;
+        opt.label = m.name;
+        datalist.appendChild(opt);
+      }
+    }
+
+    els.openrouterModel.oninput = updateOpenrouterModelInfo;
+    els.openrouterModel.onchange = updateOpenrouterModelInfo;
+
+    if (!els.openrouterModel.value && state.formData.openrouterModel) {
+      els.openrouterModel.value = state.formData.openrouterModel;
+    }
+
+    updateOpenrouterModelInfo();
+  }
+
+  function updateOpenrouterModelInfo() {
+    if (!els.openrouterModel || !els.openrouterModelInfo || !state.openrouterModels) return;
+
+    var inputVal = els.openrouterModel.value.trim();
+    // Strip known suffixes (e.g. :online, :extended) to match base model
+    var baseId = inputVal.replace(/:[\w-]+$/, '');
+    var selectedModel = null;
+
+    for (var j = 0; j < state.openrouterModels.length; j++) {
+      if (state.openrouterModels[j].id === inputVal || state.openrouterModels[j].id === baseId) {
+        selectedModel = state.openrouterModels[j];
+        break;
+      }
+    }
+
+    if (selectedModel) {
+      var suffix = inputVal !== selectedModel.id ? inputVal.slice(selectedModel.id.length) : '';
+      showElement(els.openrouterModelInfo);
+      if (els.openrouterModelName) setText(els.openrouterModelName, selectedModel.name + (suffix ? ' ' + suffix : ''));
+      if (els.openrouterModelDesc) setText(els.openrouterModelDesc, selectedModel.description || '');
+      if (els.openrouterModelContext) setText(els.openrouterModelContext, formatNumber(selectedModel.contextWindow / 1000) + 'K');
+      if (els.openrouterModelInput) setText(els.openrouterModelInput, selectedModel.inputPrice.toFixed(2));
+      if (els.openrouterModelOutput) setText(els.openrouterModelOutput, selectedModel.outputPrice.toFixed(2));
+    } else if (inputVal) {
+      // Custom model ID — show info box with the raw ID, no pricing
+      showElement(els.openrouterModelInfo);
+      if (els.openrouterModelName) setText(els.openrouterModelName, inputVal);
+      if (els.openrouterModelDesc) setText(els.openrouterModelDesc, 'Custom model ID');
+      if (els.openrouterModelContext) setText(els.openrouterModelContext, '—');
+      if (els.openrouterModelInput) setText(els.openrouterModelInput, '—');
+      if (els.openrouterModelOutput) setText(els.openrouterModelOutput, '—');
+    } else {
+      hideElement(els.openrouterModelInfo);
     }
   }
 
@@ -916,6 +1040,7 @@
       authChoice: state.formData.authChoice,
       authSecret: state.formData.authSecret,
       atlasModel: state.formData.atlasModel,
+      openrouterModel: state.formData.openrouterModel,
       modelscopeModel: state.formData.modelscopeModel,
       telegramToken: state.formData.telegramToken,
       discordToken: state.formData.discordToken,
@@ -1063,6 +1188,7 @@
           authSecret: '',
           flow: 'quickstart',
           atlasModel: 'deepseek-ai/deepseek-v3.2',
+          openrouterModel: 'anthropic/claude-sonnet-4',
           modelscopeModel: 'deepseek-ai/DeepSeek-V3.2',
           telegramToken: '',
           discordToken: '',

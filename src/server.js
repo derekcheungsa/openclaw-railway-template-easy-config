@@ -616,6 +616,112 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
       label: "OpenRouter",
       hint: "API key",
       options: [{ value: "openrouter-api-key", label: "OpenRouter API key" }],
+      models: [
+        {
+          id: "anthropic/claude-sonnet-4",
+          name: "Claude Sonnet 4",
+          description: "Anthropic's fast, capable coding model",
+          contextWindow: 200000,
+          inputPrice: 3.00,
+          outputPrice: 15.00,
+        },
+        {
+          id: "anthropic/claude-opus-4",
+          name: "Claude Opus 4",
+          description: "Anthropic's most capable model",
+          contextWindow: 200000,
+          inputPrice: 15.00,
+          outputPrice: 75.00,
+        },
+        {
+          id: "openai/gpt-4.1",
+          name: "GPT-4.1",
+          description: "OpenAI's latest flagship model",
+          contextWindow: 1047576,
+          inputPrice: 2.00,
+          outputPrice: 8.00,
+        },
+        {
+          id: "google/gemini-2.5-pro-preview",
+          name: "Gemini 2.5 Pro",
+          description: "Google's advanced reasoning model",
+          contextWindow: 1048576,
+          inputPrice: 1.25,
+          outputPrice: 10.00,
+        },
+        {
+          id: "deepseek/deepseek-chat-v3-0324",
+          name: "DeepSeek V3",
+          description: "Strong reasoning and coding at low cost",
+          contextWindow: 131072,
+          inputPrice: 0.27,
+          outputPrice: 1.10,
+        },
+        {
+          id: "meta-llama/llama-4-maverick",
+          name: "Llama 4 Maverick",
+          description: "Meta's open-weight multimodal model",
+          contextWindow: 1048576,
+          inputPrice: 0.20,
+          outputPrice: 0.60,
+        },
+        {
+          id: "anthropic/claude-sonnet-4.6",
+          name: "Claude Sonnet 4.6",
+          description: "Anthropic's latest fast coding model",
+          contextWindow: 200000,
+          inputPrice: 3.00,
+          outputPrice: 15.00,
+        },
+        {
+          id: "openai/gpt-5.4-mini",
+          name: "GPT-5.4 Mini",
+          description: "OpenAI's compact, efficient model",
+          contextWindow: 1048576,
+          inputPrice: 0.50,
+          outputPrice: 2.00,
+        },
+        {
+          id: "google/gemini-3-flash-preview",
+          name: "Gemini 3 Flash",
+          description: "Google's fast, lightweight model",
+          contextWindow: 1048576,
+          inputPrice: 0.10,
+          outputPrice: 0.40,
+        },
+        {
+          id: "deepseek/deepseek-v3.2",
+          name: "DeepSeek V3.2",
+          description: "Latest DeepSeek with improved reasoning",
+          contextWindow: 163840,
+          inputPrice: 0.28,
+          outputPrice: 0.40,
+        },
+        {
+          id: "moonshotai/kimi-k2.5",
+          name: "Kimi K2.5",
+          description: "Moonshot's flagship reasoning model",
+          contextWindow: 327680,
+          inputPrice: 0.55,
+          outputPrice: 2.00,
+        },
+        {
+          id: "minimax/minimax-m2.7",
+          name: "MiniMax M2.7",
+          description: "MiniMax's latest optimized model",
+          contextWindow: 196600,
+          inputPrice: 0.30,
+          outputPrice: 1.20,
+        },
+        {
+          id: "z-ai/glm-5",
+          name: "GLM-5",
+          description: "Z.AI's next-generation language model",
+          contextWindow: 204800,
+          inputPrice: 0.55,
+          outputPrice: 2.10,
+        },
+      ],
     },
     {
       value: "ai-gateway",
@@ -744,9 +850,9 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
     },
     {
       value: "zai",
-      label: "Z.AI (GLM 4.7)",
+      label: "Z.AI (GLM 5)",
       hint: "API key",
-      options: [{ value: "zai-api-key", label: "Z.AI (GLM 4.7) API key" }],
+      options: [{ value: "zai-api-key", label: "Z.AI (GLM 5) API key" }],
     },
     {
       value: "minimax",
@@ -1196,6 +1302,20 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
           extra += `\n[slack config] exit=${set.code} (output ${set.output.length} chars)\n${set.output || "(no output)"}`;
           extra += `\n[slack verify] exit=${get.code} (output ${get.output.length} chars)\n${get.output || "(no output)"}`;
         }
+      }
+
+      // Configure OpenRouter model if selected
+      if (payload.authChoice === "openrouter-api-key" && payload.openrouterModel) {
+        const orModel = payload.openrouterModel;
+        console.log(`[openrouter] Configuring OpenRouter with model: ${orModel}`);
+
+        const setModelResult = await runCmd(
+          OPENCLAW_NODE,
+          clawArgs(["config", "set", "agents.defaults.model.primary", `openrouter/${orModel}`]),
+        );
+        console.log(`[openrouter] Set model result: exit=${setModelResult.code}`, setModelResult.output || "(no output)");
+
+        extra += `\n[openrouter] configured OpenRouter (model: ${orModel})\n`;
       }
 
       // Configure Atlas Cloud if selected (using OpenAI-compatible endpoint)
