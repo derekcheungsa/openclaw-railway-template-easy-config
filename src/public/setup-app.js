@@ -21,7 +21,7 @@
       authSecret: '',
       flow: 'quickstart',
       atlasModel: 'deepseek-ai/deepseek-v3.2',
-      openrouterModel: 'anthropic/claude-sonnet-4',
+      openrouterModel: 'anthropic/claude-sonnet-4.6',
       modelscopeModel: 'deepseek-ai/DeepSeek-V3.2',
       telegramToken: '',
       discordToken: '',
@@ -316,7 +316,7 @@
     state.formData.authSecret = els.authSecret ? els.authSecret.value : '';
     state.formData.flow = els.flow ? els.flow.value : 'quickstart';
     state.formData.atlasModel = els.atlasModel ? els.atlasModel.value : 'deepseek-ai/deepseek-v3.2';
-    state.formData.openrouterModel = els.openrouterModel ? els.openrouterModel.value : 'anthropic/claude-sonnet-4';
+    state.formData.openrouterModel = els.openrouterModel ? els.openrouterModel.value : 'anthropic/claude-sonnet-4.6';
     state.formData.modelscopeModel = els.modelscopeModel ? els.modelscopeModel.value : 'deepseek-ai/DeepSeek-V3.2';
     state.formData.telegramToken = els.telegramToken ? els.telegramToken.value : '';
     state.formData.discordToken = els.discordToken ? els.discordToken.value : '';
@@ -1201,7 +1201,7 @@
           authSecret: '',
           flow: 'quickstart',
           atlasModel: 'deepseek-ai/deepseek-v3.2',
-          openrouterModel: 'anthropic/claude-sonnet-4',
+          openrouterModel: 'anthropic/claude-sonnet-4.6',
           modelscopeModel: 'deepseek-ai/DeepSeek-V3.2',
           telegramToken: '',
           discordToken: '',

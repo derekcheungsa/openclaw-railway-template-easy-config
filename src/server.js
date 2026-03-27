@@ -618,24 +618,8 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
       options: [{ value: "openrouter-api-key", label: "OpenRouter API key" }],
       models: [
         {
-          id: "anthropic/claude-sonnet-4",
-          name: "Claude Sonnet 4",
-          description: "Anthropic's fast, capable coding model",
-          contextWindow: 200000,
-          inputPrice: 3.00,
-          outputPrice: 15.00,
-        },
-        {
-          id: "anthropic/claude-opus-4",
-          name: "Claude Opus 4",
-          description: "Anthropic's most capable model",
-          contextWindow: 200000,
-          inputPrice: 15.00,
-          outputPrice: 75.00,
-        },
-        {
-          id: "openai/gpt-4.1",
-          name: "GPT-4.1",
+          id: "openai/gpt-5.4",
+          name: "GPT-5.4",
           description: "OpenAI's latest flagship model",
           contextWindow: 1047576,
           inputPrice: 2.00,
@@ -656,14 +640,6 @@ app.get("/setup/api/status", requireSetupAuth, async (_req, res) => {
           contextWindow: 131072,
           inputPrice: 0.27,
           outputPrice: 1.10,
-        },
-        {
-          id: "meta-llama/llama-4-maverick",
-          name: "Llama 4 Maverick",
-          description: "Meta's open-weight multimodal model",
-          contextWindow: 1048576,
-          inputPrice: 0.20,
-          outputPrice: 0.60,
         },
         {
           id: "anthropic/claude-sonnet-4.6",
