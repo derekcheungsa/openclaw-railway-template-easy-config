@@ -27,13 +27,13 @@ jobs:
       - name: Get current image tag from Dockerfile
         id: current
         run: |
-          CURRENT=$(grep 'ARG OPENCLAW_IMAGE=' Dockerfile | sed 's|.*openclaw:||')
+          CURRENT=$(grep 'ARG OPENCLAW_IMAGE=' Dockerfile.railway | sed 's|.*openclaw:||')
           echo "image_tag=$CURRENT" >> $GITHUB_OUTPUT
 
       - name: Update Dockerfile
         if: steps.latest.outputs.image_tag != steps.current.outputs.image_tag
         run: |
-          sed -i 's|ARG OPENCLAW_IMAGE=.*|ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:${{ steps.latest.outputs.image_tag }}|' Dockerfile
+          sed -i 's|ARG OPENCLAW_IMAGE=.*|ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:${{ steps.latest.outputs.image_tag }}|' Dockerfile.railway
 
       - name: Create Pull Request
         if: steps.latest.outputs.image_tag != steps.current.outputs.image_tag
