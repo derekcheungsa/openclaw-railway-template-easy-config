@@ -1,3 +1,5 @@
+# syntax=docker/dockerfile:1
+
 # Pull pre-built openclaw image instead of building from source.
 ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:latest
 FROM ${OPENCLAW_IMAGE} AS openclaw-source
@@ -7,10 +9,14 @@ FROM ${OPENCLAW_IMAGE} AS openclaw-source
 FROM node:22-bookworm
 ENV NODE_ENV=production
 
-RUN apt-get update \
+# Install all apt packages in one pass (consolidates 3 separate apt-get update calls)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    apt-get update \
   && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
     ca-certificates \
     curl \
+    wget \
     build-essential \
     gcc \
     g++ \
@@ -23,10 +29,23 @@ RUN apt-get update \
     python3-pip \
     pkg-config \
     sudo \
-  && rm -rf /var/lib/apt/lists/*
+    poppler-utils \
+    fonts-ipafont-gothic \
+    fonts-wqy-zenhei \
+    fonts-thai-tlwg \
+    fonts-kacst \
+    fonts-freefont-ttf \
+    libxss1
+
+# Install Google Chrome (requires custom apt source — kept separate)
+RUN --mount=type=cache,target=/var/cache/apt,sharing=locked \
+    --mount=type=cache,target=/var/lib/apt,sharing=locked \
+    wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
+  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
+  && apt-get update \
+  && apt-get install -y google-chrome-stable
 
 # Install Homebrew (must run as non-root user)
-# Create a user for Homebrew installation, install it, then make it accessible to all users
 # Cache-bust: v2
 RUN useradd -m -s /bin/bash linuxbrew \
   && echo 'linuxbrew ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers
@@ -47,47 +66,24 @@ WORKDIR /app
 # Wrapper deps
 RUN corepack enable
 COPY package.json pnpm-lock.yaml ./
-RUN pnpm install --prod --frozen-lockfile && pnpm store prune
+RUN --mount=type=cache,target=/root/.local/share/pnpm/store \
+    pnpm install --prod --frozen-lockfile
 
-# Install Python PDF libraries for pdf skill using virtual environment approach
-# Create a virtual environment to respect PEP 668 (externally managed Python)
+# Install Python PDF libraries using virtual environment
 RUN python3 -m venv /opt/pdf-venv
-
-# Install PDF libraries in the virtual environment
-RUN /opt/pdf-venv/bin/pip install --no-cache-dir pypdf pdfplumber reportlab && \
-    apt-get update && \
-    DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    poppler-utils && \
-    rm -rf /var/lib/apt/lists/*
+RUN --mount=type=cache,target=/root/.cache/pip \
+    /opt/pdf-venv/bin/pip install pypdf pdfplumber reportlab
 
 # Add venv binaries to PATH for skill usage
 ENV PATH="/opt/pdf-venv/bin:${PATH}"
-
-# Install Chromium for Puppeteer (patient-health-portal-helper skill)
-# Use specific version to ensure compatibility
-RUN apt-get update \
-  && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-    ca-certificates \
-    fonts-ipafont-gothic \
-    fonts-wqy-zenhei \
-    fonts-thai-tlwg \
-    fonts-kacst \
-    fonts-freefont-ttf \
-    libxss1 \
-    && rm -rf /var/lib/apt/lists/* \
-  && wget -q -O - https://dl-ssl.google.com/linux/linux_signing_key.pub | gpg --dearmor -o /usr/share/keyrings/googlechrome-linux-keyring.gpg \
-  && echo "deb [arch=amd64 signed-by=/usr/share/keyrings/googlechrome-linux-keyring.gpg] http://dl.google.com/linux/chrome/deb/ stable main" > /etc/apt/sources.list.d/google-chrome.list \
-  && apt-get update \
-  && apt-get install -y google-chrome-stable \
-  && rm -rf /var/lib/apt/lists/*
 
 # Copy all skills first (for dependency installation)
 COPY skills /tmp/skills
 
 # Install patient-health-portal-helper skill dependencies
-# Note: package.json is in the lib/ subdirectory (ES modules structure)
 WORKDIR /tmp/skills/patient-health-portal-helper/lib
-RUN npm install && npm cache clean --force
+RUN --mount=type=cache,target=/root/.npm \
+    npm install
 
 # Return to app directory
 WORKDIR /app
