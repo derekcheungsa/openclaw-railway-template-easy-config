@@ -3,7 +3,7 @@
 # Rebuild when: openclaw version bumps, apt packages change, or Python libs change.
 # Published to: ghcr.io/derekcheungsa/openclaw-railway-template-easy-config-base:latest
 
-ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:2026.3.28-slim
+ARG OPENCLAW_IMAGE=ghcr.io/openclaw/openclaw:2026.4.15-slim
 FROM ${OPENCLAW_IMAGE} AS openclaw-source
 
 FROM node:22-bookworm
