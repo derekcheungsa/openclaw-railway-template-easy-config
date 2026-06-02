@@ -1014,6 +1014,45 @@ async function syncAgentModels(modelRef) {
   return { ok: result.code === 0, changed: updated.length };
 }
 
+// Make `modelRef` the model the default agent actually runs.
+//
+// OpenClaw treats `agents.defaults.models` (PLURAL map) as the allowlist for the agent:
+// `agents.defaults.model.primary` (and fallbacks) are only honored if they are keys in
+// that allowlist, otherwise OpenClaw filters them out and runs whatever IS allowlisted.
+// `openclaw onboard` seeds the allowlist with just "<provider>/auto", so setting only
+// model.primary leaves the agent running e.g. openrouter/auto. We merge the chosen model
+// into the allowlist (merge = never trips the "removes entries" guard), set it as primary,
+// and reconcile any per-agent overrides.
+async function setAgentDefaultModel(modelRef, alias) {
+  // 1. Add the model to the allowlist (agents.defaults.models), preserving existing entries.
+  let models = {};
+  try {
+    const cfg = JSON.parse(fs.readFileSync(configPath(), "utf8"));
+    const existing = cfg?.agents?.defaults?.models;
+    if (existing && typeof existing === "object" && !Array.isArray(existing)) {
+      models = existing;
+    }
+  } catch (_e) { /* no existing allowlist */ }
+  models[modelRef] = { ...(models[modelRef] || {}), alias };
+  const allowlistResult = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["config", "set", "--json", "agents.defaults.models", JSON.stringify(models)]),
+  );
+  console.log(`[model] setAgentDefaultModel: allowlisted ${modelRef} (exit=${allowlistResult.code})`, allowlistResult.output || "(no output)");
+
+  // 2. Set the primary model (now present in the allowlist, so it is actually honored).
+  const primaryResult = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["config", "set", "agents.defaults.model.primary", modelRef]),
+  );
+  console.log(`[model] setAgentDefaultModel: set primary=${modelRef} (exit=${primaryResult.code})`, primaryResult.output || "(no output)");
+
+  // 3. Reconcile any per-agent overrides so nothing shadows the default.
+  await syncAgentModels(modelRef);
+
+  return { ok: allowlistResult.code === 0 && primaryResult.code === 0 };
+}
+
 app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
   // Set flag to prevent middleware from starting gateway during onboarding
   onboardingInProgress = true;
@@ -1348,14 +1387,9 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         );
         console.log(`[openrouter] Registered model in catalog: exit=${registerResult.code}`, registerResult.output || "(no output)");
 
-        const setModelResult = await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "agents.defaults.model.primary", orRef]),
-        );
-        console.log(`[openrouter] Set model result: exit=${setModelResult.code}`, setModelResult.output || "(no output)");
-
-        // Also set the model on any scaffolded agent so it doesn't shadow the default.
-        await syncAgentModels(orRef);
+        // Allowlist the model AND set it as primary so the agent actually runs it
+        // (onboard seeds the allowlist with only openrouter/auto, which otherwise wins).
+        await setAgentDefaultModel(orRef, "OpenRouter");
 
         extra += `\n[openrouter] configured OpenRouter (model: ${orModel})\n`;
       }
@@ -1393,16 +1427,9 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         );
         console.log(`[atlas] Set provider result: exit=${setProviderResult.code}`, setProviderResult.output || "(no output)");
 
-        // Set the active model to use Atlas Cloud (use / not :)
+        // Allowlist the model AND set it as primary so the agent actually runs it.
         const atlasRef = `atlas/${atlasModel}`;
-        const setModelResult = await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "agents.defaults.model.primary", atlasRef]),
-        );
-        console.log(`[atlas] Set model result: exit=${setModelResult.code}`, setModelResult.output || "(no output)");
-
-        // Also set the model on any scaffolded agent so it doesn't shadow the default.
-        await syncAgentModels(atlasRef);
+        await setAgentDefaultModel(atlasRef, "Atlas Cloud");
 
         extra += `\n[atlas] configured Atlas Cloud provider (model: ${atlasModel})\n`;
       } else {
@@ -1437,15 +1464,9 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         );
         console.log(`[modelscope] Set provider result: exit=${setProviderResult.code}`, setProviderResult.output || "(no output)");
 
+        // Allowlist the model AND set it as primary so the agent actually runs it.
         const msRef = `modelscope/${msModel}`;
-        const setModelResult = await runCmd(
-          OPENCLAW_NODE,
-          clawArgs(["config", "set", "agents.defaults.model.primary", msRef]),
-        );
-        console.log(`[modelscope] Set model result: exit=${setModelResult.code}`, setModelResult.output || "(no output)");
-
-        // Also set the model on any scaffolded agent so it doesn't shadow the default.
-        await syncAgentModels(msRef);
+        await setAgentDefaultModel(msRef, "ModelScope");
 
         extra += `\n[modelscope] configured ModelScope.ai provider (model: ${msModel})\n`;
       }
@@ -1463,6 +1484,7 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
         );
         const defaultPrimary = effective.code === 0 ? effective.output.trim() : "(unknown)";
         let agentModel = null;
+        let allowlist = [];
         try {
           const cfg = JSON.parse(fs.readFileSync(configPath(), "utf8"));
           const list = cfg?.agents?.list;
@@ -1470,10 +1492,16 @@ app.post("/setup/api/run", requireSetupAuth, async (req, res) => {
             const def = list.find((a) => a && a.default === true) || list[0];
             agentModel = def?.model ?? null;
           }
+          const models = cfg?.agents?.defaults?.models;
+          if (models && typeof models === "object") allowlist = Object.keys(models);
         } catch (_e) { /* ignore */ }
         const effModel = agentModel || defaultPrimary;
-        console.log(`[model] effective model: ${effModel} (defaults.primary=${defaultPrimary}, defaultAgent.model=${agentModel ?? "inherit"})`);
-        extra += `\n[model] effective model: ${effModel} (default agent)\n`;
+        const allowlisted = allowlist.includes(defaultPrimary);
+        console.log(`[model] effective model: ${effModel} (defaults.primary=${defaultPrimary}, defaultAgent.model=${agentModel ?? "inherit"}, allowlist=[${allowlist.join(", ")}], primaryAllowlisted=${allowlisted})`);
+        extra += `\n[model] effective model: ${effModel} (default agent; allowlist: ${allowlist.join(", ") || "none"})\n`;
+        if (!allowlisted) {
+          extra += `[model] WARNING: primary (${defaultPrimary}) is not in the allowlist — OpenClaw may run an allowlisted model instead.\n`;
+        }
       } catch (err) {
         console.warn(`[model] could not read effective model: ${err.message}`);
       }
