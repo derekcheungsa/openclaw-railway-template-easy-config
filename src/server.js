@@ -1593,6 +1593,60 @@ app.post("/setup/api/pairing/approve", requireSetupAuth, async (req, res) => {
     .json({ ok: r.code === 0, output: r.output });
 });
 
+
+// ---- Device (browser) pairing approvals ----
+// The Control UI "Approve this browser" flow requires running
+// `openclaw devices approve <id>` on the gateway host. Template users on
+// Railway have no shell, so the setup wizard surfaces pending device
+// pairing requests and approves them over the authenticated /setup API.
+
+function parseDevicesJson(output) {
+  // CLI may print non-JSON lines before the payload; find the first "{".
+  const start = output.indexOf("{");
+  if (start === -1) return null;
+  try {
+    return JSON.parse(output.slice(start));
+  } catch {
+    return null;
+  }
+}
+
+app.get("/setup/api/devices/list", requireSetupAuth, async (_req, res) => {
+  const r = await runCmd(OPENCLAW_NODE, clawArgs(["devices", "list", "--json"]));
+  if (r.code !== 0) {
+    return res.json({ ok: false, error: r.output.slice(-400), pending: [] });
+  }
+  const list = parseDevicesJson(r.output);
+  const pending = Array.isArray(list && list.pending) ? list.pending : [];
+  return res.json({
+    ok: true,
+    pending: pending.map((d) => ({
+      requestId: d.requestId,
+      deviceId: d.deviceId,
+      displayName: d.displayName || d.clientId || d.deviceId,
+      platform: d.platform || "",
+      browserOrigin: d.browserOrigin || "",
+      remoteIp: d.remoteIp || "",
+      isRepair: !!d.isRepair,
+      ts: d.ts || 0,
+    })),
+  });
+});
+
+app.post("/setup/api/devices/approve", requireSetupAuth, async (req, res) => {
+  const { requestId } = req.body || {};
+  if (!requestId || typeof requestId !== "string") {
+    return res.status(400).json({ ok: false, error: "Missing requestId" });
+  }
+  const r = await runCmd(
+    OPENCLAW_NODE,
+    clawArgs(["devices", "approve", String(requestId), "--json"]),
+  );
+  return res
+    .status(r.code === 0 ? 200 : 500)
+    .json({ ok: r.code === 0, output: r.output.slice(-800) });
+});
+
 // Google Workspace (gog) OAuth authentication endpoints
 // These allow completing gog authentication without Railway Shell access
 
