@@ -14,6 +14,7 @@
     atlasModels: [],
     openrouterModels: [],
     pairingRefreshTimer: null,
+    deviceRefreshTimer: null,
     modelscopeModels: [],
     formData: {
       authGroup: '',
@@ -208,6 +209,12 @@
     els.pairingEmpty = $('#pairing-empty');
     els.pairingList = $('#pairing-list');
     els.pairingError = $('#pairing-error');
+    els.deviceRequestsSection = $('#device-requests-section');
+    els.deviceRefreshBtn = $('#device-refresh-btn');
+    els.deviceLoading = $('#device-loading');
+    els.deviceEmpty = $('#device-empty');
+    els.deviceList = $('#device-list');
+    els.deviceError = $('#device-error');
   }
 
   // ===================================
@@ -903,6 +910,7 @@
         showElement(els.configuredBanner);
         // Load pending pairing requests when configured
         refreshPairingRequests();
+        refreshDeviceRequests();
       }
 
       renderAuth(j.authGroups || []);
@@ -1031,6 +1039,97 @@
       }
     }).catch(function (e) {
       alert('Error approving request: ' + String(e));
+    });
+  };
+
+  function refreshDeviceRequests() {
+    if (!els.deviceRequestsSection) return;
+
+    if (state.deviceRefreshTimer) {
+      clearTimeout(state.deviceRefreshTimer);
+      state.deviceRefreshTimer = null;
+    }
+
+    if (els.deviceRefreshBtn) {
+      var svg = els.deviceRefreshBtn.querySelector('svg');
+      if (svg) svg.classList.add('spinning');
+    }
+
+    showElement(els.deviceRequestsSection);
+    if (els.deviceLoading) showElement(els.deviceLoading);
+    if (els.deviceEmpty) hideElement(els.deviceEmpty);
+    if (els.deviceList) els.deviceList.innerHTML = '';
+    if (els.deviceError) hideElement(els.deviceError);
+
+    httpJson('/setup/api/devices/list').then(function (j) {
+      if (els.deviceLoading) hideElement(els.deviceLoading);
+      if (els.deviceRefreshBtn) {
+        var svg = els.deviceRefreshBtn.querySelector('svg');
+        if (svg) svg.classList.remove('spinning');
+      }
+
+      if (!j.ok) {
+        if (els.deviceError) {
+          els.deviceError.textContent = 'Failed to load device requests' + (j.error ? ': ' + j.error : '');
+          showElement(els.deviceError);
+        }
+        state.deviceRefreshTimer = setTimeout(refreshDeviceRequests, 30000);
+        return;
+      }
+
+      if (!j.pending || j.pending.length === 0) {
+        if (els.deviceEmpty) showElement(els.deviceEmpty);
+        state.deviceRefreshTimer = setTimeout(refreshDeviceRequests, 15000);
+        return;
+      }
+
+      if (els.deviceList) {
+        els.deviceList.innerHTML = j.pending.map(function (d) {
+          var when = d.ts ? new Date(d.ts).toLocaleString() : '';
+          return '<div class="review-section" style="margin-bottom: 1rem;">' +
+            '<div class="review-item">' +
+              '<span class="review-label">Device:</span>' +
+              '<span class="review-value">' + escapeHtml(d.displayName) + '</span>' +
+            '</div>' +
+            (d.platform ? '<div class="review-item"><span class="review-label">Platform:</span><span class="review-value">' + escapeHtml(d.platform) + '</span></div>' : '') +
+            (d.remoteIp ? '<div class="review-item"><span class="review-label">IP:</span><span class="review-value">' + escapeHtml(d.remoteIp) + '</span></div>' : '') +
+            (when ? '<div class="review-item"><span class="review-label">Requested:</span><span class="review-value">' + escapeHtml(when) + '</span></div>' : '') +
+            '<div class="review-item">' +
+              '<span class="review-label">Request ID:</span>' +
+              '<span class="review-value" style="font-family: monospace; font-size: 0.75rem;">' + escapeHtml(d.requestId) + '</span>' +
+            '</div>' +
+            '<button class="btn-primary" style="margin-top: 0.5rem;" onclick="approveDeviceRequest(\'' + escapeHtml(d.requestId) + '\')">Approve</button>' +
+          '</div>';
+        }).join('');
+      }
+    }).catch(function (e) {
+      if (els.deviceLoading) hideElement(els.deviceLoading);
+      if (els.deviceRefreshBtn) {
+        var svg = els.deviceRefreshBtn.querySelector('svg');
+        if (svg) svg.classList.remove('spinning');
+      }
+      if (els.deviceError) {
+        els.deviceError.textContent = 'Error: ' + String(e);
+        showElement(els.deviceError);
+      }
+      state.deviceRefreshTimer = setTimeout(refreshDeviceRequests, 30000);
+    });
+  }
+
+  window.approveDeviceRequest = function (requestId) {
+    httpJson('/setup/api/devices/approve', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestId: requestId })
+    }).then(function (j) {
+      if (j.ok) {
+        refreshDeviceRequests();
+      } else {
+        alert('Failed to approve device: ' + (j.output || j.error || 'Unknown error'));
+        refreshDeviceRequests();
+      }
+    }).catch(function (e) {
+      alert('Error approving device: ' + String(e));
     });
   };
 
