@@ -511,10 +511,17 @@
                 <p class="muted">Add Telegram, Discord, or Slack for messaging integration</p>
               </div>
             </div>
+            <div class="step-card">
+              <div class="step-number">4</div>
+              <div>
+                <strong>Approve your browser (first UI open)</strong>
+                <p class="muted">The dashboard will ask to "Approve this browser". Switch back to this tab &mdash; the request appears in <strong>Device Approvals</strong> below. Click <strong>Approve</strong>, then return to the dashboard tab.</p>
+              </div>
+            </div>
           </div>
 
           <div class="action-buttons">
-            <a href="/openclaw" target="_blank" class="btn-large btn-primary">Open OpenClaw UI</a>
+            <a href="/openclaw" target="_blank" id="open-ui-success" class="btn-large btn-primary">Open OpenClaw UI</a>
             <button id="download-backup" class="btn-large btn-secondary">Download Backup</button>
           </div>
 
@@ -556,7 +563,7 @@
       </svg>
       <span id="status-text">OpenClaw is already configured</span>
       <span class="separator">|</span>
-      <a href="/openclaw" target="_blank">Open UI</a>
+      <a href="/openclaw" target="_blank" id="open-ui-banner">Open UI</a>
       <span class="separator">|</span>
       <a href="/setup/export" target="_blank">Download Backup</a>
       <span class="separator">|</span>
@@ -626,6 +633,18 @@
         </button>
       </div>
       <p class="muted">Approve browsers or apps waiting to pair with the Gateway &mdash; e.g. the "Approve this browser" screen shown after setup. No terminal required.</p>
+
+      <div id="device-hint" class="info-box" hidden style="border-color: #6D5DF6; margin-bottom: 1rem;">
+        <svg class="info-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" aria-hidden="true">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <div>
+          <strong>Waiting for your browser request&hellip;</strong>
+          <p class="muted">The dashboard just opened in a new tab. When it shows <strong>"Approve this browser"</strong>, come back to this tab &mdash; the request will appear below within a few seconds. Click <strong>Approve</strong>, then switch back to the dashboard tab and it will connect on its own.</p>
+        </div>
+      </div>
 
       <div id="device-loading" class="muted" style="text-align: center; padding: 2rem;">
         Loading pending device requests...
