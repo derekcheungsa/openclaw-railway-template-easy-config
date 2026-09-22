@@ -215,6 +215,9 @@
     els.deviceEmpty = $('#device-empty');
     els.deviceList = $('#device-list');
     els.deviceError = $('#device-error');
+    els.openUiSuccess = $('#open-ui-success');
+    els.openUiBanner = $('#open-ui-banner');
+    els.deviceHint = $('#device-hint');
   }
 
   // ===================================
@@ -911,6 +914,23 @@
         // Load pending pairing requests when configured
         refreshPairingRequests();
         refreshDeviceRequests();
+
+  function wireOpenUiButtons() {
+    var handler = function () {
+      if (els.deviceHint) showElement(els.deviceHint);
+      // refresh immediately so the just-created request shows up fast,
+      // then keep the card visible; auto-refresh continues in background
+      refreshDeviceRequests();
+      if (els.deviceRequestsSection && els.deviceRequestsSection.scrollIntoView) {
+        setTimeout(function () {
+          els.deviceRequestsSection.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        }, 600);
+      }
+    };
+    if (els.openUiSuccess) els.openUiSuccess.addEventListener('click', handler);
+    if (els.openUiBanner) els.openUiBanner.addEventListener('click', handler);
+  }
+  wireOpenUiButtons();
       }
 
       renderAuth(j.authGroups || []);
