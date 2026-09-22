@@ -42,7 +42,7 @@ const INTERNAL_GATEWAY_HOST = "127.0.0.1";
 const GATEWAY_TARGET = `http://${INTERNAL_GATEWAY_HOST}:${INTERNAL_GATEWAY_PORT}`;
 
 // Always run the built-from-source CLI entry directly to avoid PATH/global-install mismatches.
-const OPENCLAW_ENTRY = "/openclaw/dist/entry.js";
+const OPENCLAW_ENTRY = "/openclaw/openclaw.mjs";
 const OPENCLAW_NODE = "node";
 
 function clawArgs(args) {
