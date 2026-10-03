@@ -1,90 +1,88 @@
 name: Docker build
 
+# Railway builds Dockerfile.railway from main and pulls the base image below,
+# so whatever is pushed to ...-base:latest reaches every new deployer.
+#
+#   pull requests      -> build + smoke test only, nothing is published
+#   push to main       -> build + smoke test, then publish exactly what was tested
+#   workflow_dispatch  -> same as push when run on main
 on:
   pull_request:
   push:
     branches:
       - main
+  workflow_dispatch:
 
 permissions:
   contents: read
-  packages: write
+
+concurrency:
+  group: docker-build-${{ github.ref }}
+  # Never cancel a run on main part-way through publishing.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  BASE_IMAGE: ghcr.io/${{ github.repository }}-base
+  FULL_IMAGE: ghcr.io/${{ github.repository }}
 
 jobs:
-  # Detects whether Dockerfile.base changed in this push
-  check-base:
+  build-test-publish:
     runs-on: ubuntu-latest
-    outputs:
-      changed: ${{ steps.check.outputs.changed }}
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    env:
+      PUBLISH: ${{ github.ref == 'refs/heads/main' && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') }}
     steps:
       - uses: actions/checkout@v4
-        with:
-          fetch-depth: 2
-      - id: check
+
+      - name: Syntax check
+        run: node --check src/server.js
+
+      # Plain `docker build` (not buildx) so the second build can use the
+      # first image from the local store as its base.
+      - name: Build base image (local only)
+        run: docker build -f Dockerfile.base -t openclaw-base:ci .
+
+      - name: Build wrapper image on top of that base
+        run: >
+          docker build -f Dockerfile.railway
+          --build-arg BASE_IMAGE=openclaw-base:ci
+          -t openclaw-railway:ci .
+
+      - name: Smoke test
+        run: bash scripts/ci-smoke.sh openclaw-railway:ci
+
+      # Everything below only runs on main, and only after the smoke test passed.
+      - name: Resolve OpenClaw version
+        id: ver
+        if: env.PUBLISH == 'true'
         run: |
-          if git diff --name-only HEAD~1 HEAD | grep -q 'Dockerfile.base'; then
-            echo "changed=true" >> $GITHUB_OUTPUT
-          else
-            echo "changed=false" >> $GITHUB_OUTPUT
+          VERSION=$(sed -nE 's|^ARG OPENCLAW_IMAGE=.*/openclaw:(.+)-slim$|\1|p' Dockerfile.base)
+          if [ -z "$VERSION" ]; then
+            echo "Could not parse the OpenClaw version from Dockerfile.base" >&2
+            exit 1
           fi
-
-  # Rebuilds base image only when Dockerfile.base changes
-  build-base:
-    needs: check-base
-    if: needs.check-base.outputs.changed == 'true'
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+          echo "openclaw=$VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
+        if: env.PUBLISH == 'true'
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push base image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.base
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}-base:latest
-            ghcr.io/${{ github.repository }}-base:${{ github.sha }}
-          cache-from: type=gha,scope=base
-          cache-to: type=gha,mode=max,scope=base
-
-  # Builds full image — waits for base if it was just rebuilt
-  build-full:
-    needs: [check-base, build-base]
-    if: always() && (needs.build-base.result == 'success' || needs.build-base.result == 'skipped')
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Log in to GHCR
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push Docker image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          file: ./Dockerfile.railway
-          push: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
-          tags: |
-            ghcr.io/${{ github.repository }}:latest
-            ghcr.io/${{ github.repository }}:${{ github.sha }}
-          cache-from: type=gha,scope=full
-          cache-to: type=gha,mode=max,scope=full
+      - name: Publish the tested images
+        if: env.PUBLISH == 'true'
+        run: |
+          set -euo pipefail
+          for tag in latest "openclaw-${{ steps.ver.outputs.openclaw }}" "${{ github.sha }}"; do
+            docker tag openclaw-base:ci "${BASE_IMAGE}:${tag}"
+            docker push "${BASE_IMAGE}:${tag}"
+          done
+          for tag in latest "${{ github.sha }}"; do
+            docker tag openclaw-railway:ci "${FULL_IMAGE}:${tag}"
+            docker push "${FULL_IMAGE}:${tag}"
+          done

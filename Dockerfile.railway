@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 # All heavy deps (apt, Python, openclaw, npm) are pre-built in the base image.
 # Railway only pushes src/ + skills/ as new layers — keeps deploys fast.
-FROM ghcr.io/derekcheungsa/openclaw-railway-template-easy-config-base:latest
+#
+# BASE_IMAGE is overridden by CI to build on the exact base it is about to
+# publish. Railway uses the default.
+ARG BASE_IMAGE=ghcr.io/derekcheungsa/openclaw-railway-template-easy-config-base:latest
+FROM ${BASE_IMAGE}
 
 WORKDIR /app
 COPY src ./src
